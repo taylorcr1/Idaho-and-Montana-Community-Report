@@ -176,7 +176,7 @@ def safe_constraint(projection):
 @st.cache_data(show_spinner=False)
 def prepare_data(file_bytes):
     import io
-    df = pd.read_excel(io.BytesIO(file_bytes))
+    df = pd.read_excel(io.BytesIO(file_bytes, engine="openpyxl"))
 
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
@@ -693,7 +693,7 @@ st.caption(
     "click a node for details, and inspect PON and Plan bridging actors separately."
 )
 
-DATA_FILE = Path(__file__).with_name("MASTER dyads.xlsx")
+DATA_FILE = Path(__file__).resolve().parent / "MASTER dyads.xlsx"
 
 with st.sidebar:
     st.header("Data")
