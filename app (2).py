@@ -176,7 +176,7 @@ def safe_constraint(projection):
 @st.cache_data(show_spinner=False)
 def prepare_data(file_bytes):
     import io
-    df = pd.read_excel(io.BytesIO(file_bytes, engine="openpyxl"))
+    df = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
 
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
