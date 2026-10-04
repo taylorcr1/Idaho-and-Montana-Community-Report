@@ -8,7 +8,7 @@ import networkx as nx
 import pandas as pd
 import streamlit as st
 from networkx.algorithms import bipartite
-from streamlit_agraph import agraph, Node, Edge, Config
+import streamlit.components.v1 as components
 
 
 st.set_page_config(
@@ -423,10 +423,12 @@ def node_payload(data, geography, network_type, node_id, pon_analysis, plan_anal
     }
 
 
-def build_agraph(data, geography, network_type, analysis, pon_analysis, plan_analysis,
-                 show_labels, node_scale, edge_scale):
-    nodes = []
-    edges = []
+def build_vis_html(data, geography, network_type, analysis, pon_analysis, plan_analysis,
+                   show_labels, node_scale, edge_scale):
+    import json
+
+    vis_nodes = []
+    vis_edges = []
 
     for node_id in analysis["visual"].nodes():
         associated_oid = data["pon_to_oid"].get(node_id, "")
@@ -434,20 +436,20 @@ def build_agraph(data, geography, network_type, analysis, pon_analysis, plan_ana
         if node_id.startswith("C"):
             if associated_oid:
                 category, color = pon_org_category(data, geography, associated_oid)
-                label = data["network_name"].get(node_id, node_id)
-                shape = "square"
             else:
                 category, color = "PON", REGULAR_PON_COLOR
-                label = data["network_name"].get(node_id, node_id)
-                shape = "square"
+            label = data["network_name"].get(node_id, node_id)
+            shape = "square"
             connected = analysis["visual"].degree(node_id)
             size = 20 + min(35, connected * 2.2)
+
         elif node_id.startswith("P"):
             category, color = "Plan", PLAN_COLOR
             label = data["network_name"].get(node_id, node_id)
             shape = "diamond"
             connected = analysis["visual"].degree(node_id)
             size = 20 + min(35, connected * 2.2)
+
         else:
             oid = node_id
             if oid in data["oid_to_pon"]:
@@ -458,39 +460,201 @@ def build_agraph(data, geography, network_type, analysis, pon_analysis, plan_ana
             shape = "dot"
             size = 16 + min(28, analysis["membership_count"].get(oid, 0) * 4)
 
-        payload = node_payload(data, geography, network_type, node_id, pon_analysis, plan_analysis)
+        payload = node_payload(
+            data, geography, network_type, node_id, pon_analysis, plan_analysis
+        )
+
         if payload.get("oid"):
             oid = payload["oid"]
+            funding_lines = "<br>".join(
+                f"<b>{g}:</b> {money(a)}" for g, a in payload["funding"].items()
+            )
             title = (
-                f"{payload['name']}\n"
-                f"{payload['category']}\n"
-                f"PON Bridging Actor: {payload['pon_bridge']}\n"
-                f"Plan Bridging Actor: {payload['plan_bridge']}\n"
-                f"{geography} Funding: {money(data['funding'][geography].get(oid, 0))}"
+                f"<div style='max-width:420px'>"
+                f"<b>{payload['name']}</b><br>"
+                f"OID: {payload['oid']}<br>"
+                f"Category: {payload['category']}<br>"
+                f"Local in {geography}: {payload['local']}<br>"
+                f"PON Organization: {payload['is_pon_org']}<br><br>"
+                f"<b>PON Bridging Actor:</b> {payload['pon_bridge']}<br>"
+                f"<b>Plan Bridging Actor:</b> {payload['plan_bridge']}<br>"
+                f"PON Degree Centrality: {payload['pon_centrality']:.4f}<br>"
+                f"Plan Degree Centrality: {payload['plan_centrality']:.4f}<br><br>"
+                f"<b>Funding for work since 2019</b><br>{funding_lines}"
+                f"</div>"
             )
         else:
-            title = f"{payload['kind']}: {payload['name']}"
+            title = (
+                f"<b>{payload['name']}</b><br>"
+                f"Type: {payload['kind']}<br>"
+                f"CID: {payload['id']}<br>"
+                f"Connected organizations: {payload.get('connected_orgs', 0):,}"
+            )
 
-        nodes.append(Node(
-            id=node_id,
-            label=label if show_labels else "",
-            title=title,
-            size=size * node_scale,
-            color=color,
-            shape=shape,
-        ))
+        vis_nodes.append({
+            "id": node_id,
+            "label": label if show_labels else "",
+            "title": title,
+            "shape": shape,
+            "size": round(size * node_scale, 2),
+            "color": {
+                "background": color,
+                "border": "#333333",
+                "highlight": {"background": color, "border": "#111111"},
+                "hover": {"background": color, "border": "#111111"},
+            },
+            "borderWidth": 1.5,
+            "font": {"size": 15, "face": "Arial", "color": "#222222"},
+        })
 
     for u, v, attrs in analysis["visual"].edges(data=True):
         pon_to_pon = attrs.get("edge_kind") == "PON-to-PON"
-        edges.append(Edge(
-            source=u,
-            target=v,
-            color=PON_TO_PON_EDGE_COLOR if pon_to_pon else STANDARD_EDGE_COLOR,
-            width=(4.5 if pon_to_pon else 2.5) * edge_scale,
-        ))
+        vis_edges.append({
+            "from": u,
+            "to": v,
+            "color": PON_TO_PON_EDGE_COLOR if pon_to_pon else STANDARD_EDGE_COLOR,
+            "width": round((4.5 if pon_to_pon else 2.5) * edge_scale, 2),
+            "title": "PON-to-PON tie" if pon_to_pon else "Membership tie",
+        })
 
-    return nodes, edges
+    nodes_json = json.dumps(vis_nodes)
+    edges_json = json.dumps(vis_edges)
 
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  html, body {{
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    background: white;
+    font-family: Arial, sans-serif;
+  }}
+  #toolbar {{
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }}
+  #search {{
+    min-width: 300px;
+    padding: 8px 10px;
+    border: 1px solid #c9c9c9;
+    border-radius: 6px;
+    font-size: 14px;
+  }}
+  button {{
+    padding: 8px 11px;
+    border: 1px solid #c9c9c9;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+  }}
+  #network {{
+    width: 100%;
+    height: 760px;
+    border: 1px solid #e3e3e3;
+    border-radius: 8px;
+    background: #ffffff;
+  }}
+  #hint {{
+    color: #666;
+    font-size: 12px;
+    margin-left: 4px;
+  }}
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <input id="search" type="text" placeholder="Search organization, PON, Plan, OID, or CID">
+  <button onclick="findNode()">Find</button>
+  <button onclick="network.fit({{animation:true}})">Fit network</button>
+  <button onclick="network.stabilize()">Re-layout</button>
+  <span id="hint">Scroll to zoom · drag background to pan · drag nodes to reposition · hover for details</span>
+</div>
+<div id="network"></div>
+
+<script>
+const nodes = new vis.DataSet({nodes_json});
+const edges = new vis.DataSet({edges_json});
+const container = document.getElementById("network");
+
+const data = {{nodes: nodes, edges: edges}};
+const options = {{
+  autoResize: true,
+  interaction: {{
+    hover: true,
+    tooltipDelay: 150,
+    navigationButtons: true,
+    keyboard: true,
+    multiselect: false
+  }},
+  physics: {{
+    enabled: true,
+    solver: "forceAtlas2Based",
+    forceAtlas2Based: {{
+      gravitationalConstant: -65,
+      centralGravity: 0.01,
+      springLength: 145,
+      springConstant: 0.06,
+      damping: 0.55,
+      avoidOverlap: 0.65
+    }},
+    stabilization: {{
+      enabled: true,
+      iterations: 700,
+      updateInterval: 50,
+      fit: true
+    }}
+  }},
+  edges: {{
+    smooth: {{
+      enabled: true,
+      type: "continuous",
+      roundness: 0.15
+    }}
+  }}
+}};
+
+const network = new vis.Network(container, data, options);
+
+network.once("stabilizationIterationsDone", function () {{
+  network.setOptions({{physics: false}});
+  network.fit({{animation: {{duration: 500}}}});
+}});
+
+function findNode() {{
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  if (!q) return;
+  const all = nodes.get();
+  const hit = all.find(n =>
+    String(n.id).toLowerCase().includes(q) ||
+    String(n.label || "").toLowerCase().includes(q)
+  );
+  if (hit) {{
+    network.selectNodes([hit.id]);
+    network.focus(hit.id, {{
+      scale: 1.35,
+      animation: {{duration: 650, easingFunction: "easeInOutQuad"}}
+    }});
+  }} else {{
+    alert("No matching node found.");
+  }}
+}}
+
+document.getElementById("search").addEventListener("keydown", function(e) {{
+  if (e.key === "Enter") findNode();
+}});
+</script>
+</body>
+</html>
+"""
+    return html
 
 def combined_org_table(data, geography, pon, plan):
     all_oids = sorted(set(pon["oid_nodes"]) | set(plan["oid_nodes"]))
@@ -574,7 +738,7 @@ pon = build_analysis(data, geography, "PON")
 plan = build_analysis(data, geography, "Plan")
 current = pon if network_type == "PON" else plan
 
-nodes, edges = build_agraph(
+graph_html = build_vis_html(
     data, geography, network_type, current, pon, plan,
     show_labels, node_scale, edge_scale
 )
@@ -586,62 +750,84 @@ with graph_col:
         f"{len(current['visual'].edges()):,} displayed ties · "
         f"{len(current['bridging']):,} {network_type} bridging actors"
     )
+    components.html(graph_html, height=835, scrolling=False)
 
-    config = Config(
-        width="100%",
-        height=760,
-        directed=False,
-        physics=True,
-        hierarchical=False,
-        nodeHighlightBehavior=True,
-        highlightColor="#F7A7A6",
-        collapsible=False,
-    )
-
-    selected = agraph(nodes=nodes, edges=edges, config=config)
+selected = None
 
 # Node details
 st.divider()
-st.subheader("Node details")
+st.subheader("Organization details")
 
-if selected:
-    payload = node_payload(data, geography, network_type, selected, pon, plan)
+detail_oids = sorted(
+    set(pon["oid_nodes"]) | set(plan["oid_nodes"]),
+    key=lambda oid: data["org_name"].get(oid, oid).casefold()
+)
 
-    if payload.get("oid"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(f"### {payload['name']}")
-            st.write(f"**OID:** {payload['oid']}")
-            st.write(f"**Category:** {payload['category']}")
-            st.write(f"**Local in {geography}:** {payload['local']}")
-            st.write(f"**Native American / Affiliated:** {payload['native']}")
-            st.write(f"**PON Organization:** {payload['is_pon_org']}")
-            if payload["associated_pon"]:
-                st.write(f"**Associated PON:** {payload['associated_pon']}")
+detail_options = ["— Select an organization —"] + [
+    f"{data['org_name'].get(oid, oid)} [{oid}]" for oid in detail_oids
+]
+detail_map = {
+    f"{data['org_name'].get(oid, oid)} [{oid}]": oid for oid in detail_oids
+}
 
-        with c2:
-            st.markdown("### Network roles")
-            st.metric("PON Bridging Actor", payload["pon_bridge"])
-            st.metric("Plan Bridging Actor", payload["plan_bridge"])
-            st.write(f"**PON Degree Centrality:** {payload['pon_centrality']:.4f}")
-            st.write(f"**Plan Degree Centrality:** {payload['plan_centrality']:.4f}")
-            pc = payload["pon_constraint"]
-            plc = payload["plan_constraint"]
-            st.write(f"**PON Burt Constraint:** {'—' if pd.isna(pc) else f'{pc:.4f}'}")
-            st.write(f"**Plan Burt Constraint:** {'—' if pd.isna(plc) else f'{plc:.4f}'}")
+chosen_label = st.selectbox(
+    "Search/select an organization for full metrics and funding",
+    detail_options,
+)
 
-        with c3:
-            st.markdown("### Funding for work since 2019")
-            for geo, amount in payload["funding"].items():
-                st.write(f"**{geo}:** {money(amount)}")
+if chosen_label != "— Select an organization —":
+    oid = detail_map[chosen_label]
+    payload = node_payload(data, geography, network_type, oid, pon, plan)
 
-    else:
+    c1, c2, c3 = st.columns(3)
+    with c1:
         st.markdown(f"### {payload['name']}")
-        st.write(f"**Type:** {payload['kind']}")
-        st.write(f"**CID:** {payload['id']}")
-        st.write(f"**Connected organizations:** {payload.get('connected_orgs', 0):,}")
+        st.write(f"**OID:** {payload['oid']}")
+        st.write(f"**Category:** {payload['category']}")
+        st.write(f"**Local in {geography}:** {payload['local']}")
+        st.write(f"**Native American / Affiliated:** {payload['native']}")
+        st.write(f"**PON Organization:** {payload['is_pon_org']}")
+        if payload["associated_pon"]:
+            st.write(f"**Associated PON:** {payload['associated_pon']}")
+
+    with c2:
+        st.markdown("### Network roles")
+        st.metric("PON Bridging Actor", payload["pon_bridge"])
+        st.metric("Plan Bridging Actor", payload["plan_bridge"])
+        st.write(f"**PON Degree Centrality:** {payload['pon_centrality']:.4f}")
+        st.write(f"**Plan Degree Centrality:** {payload['plan_centrality']:.4f}")
+        pc = payload["pon_constraint"]
+        plc = payload["plan_constraint"]
+        st.write(f"**PON Burt Constraint:** {'—' if pd.isna(pc) else f'{pc:.4f}'}")
+        st.write(f"**Plan Burt Constraint:** {'—' if pd.isna(plc) else f'{plc:.4f}'}")
+
+    with c3:
+        st.markdown("### Funding for work since 2019")
+        for geo, amount in payload["funding"].items():
+            st.write(f"**{geo}:** {money(amount)}")
 else:
-    st.info("Click a node in the network to see its organization/network details and all six funding amounts.")
+    st.info(
+        "Hover over nodes in the graph for quick details, or select an organization "
+        "here for complete PON/Plan metrics and all six funding amounts."
+    )
+
+
+st.markdown("### Network legend")
+legend_cols = st.columns(4)
+with legend_cols[0]:
+    st.markdown("● **Organization** — circle")
+    st.markdown(f"<span style='color:{LOCAL_NATIVE_COLOR};font-size:22px'>●</span> Local Native American / Affiliated", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:{NONLOCAL_NATIVE_COLOR};font-size:22px'>●</span> Non-local Native American / Affiliated", unsafe_allow_html=True)
+with legend_cols[1]:
+    st.markdown(f"<span style='color:{LOCAL_PON_ORG_COLOR};font-size:22px'>■</span> Local PON Organization", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:{NONLOCAL_PON_ORG_COLOR};font-size:22px'>■</span> Non-local PON Organization", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:{REGULAR_PON_COLOR};font-size:22px'>■</span> PON", unsafe_allow_html=True)
+with legend_cols[2]:
+    st.markdown(f"<span style='color:{PLAN_COLOR};font-size:22px'>◆</span> Plan", unsafe_allow_html=True)
+    st.markdown("County/reservation colors distinguish other local vs. non-local organizations.")
+with legend_cols[3]:
+    st.markdown(f"<span style='color:{STANDARD_EDGE_COLOR};font-size:22px'>━</span> Membership tie", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:{PON_TO_PON_EDGE_COLOR};font-size:22px'>━</span> PON-to-PON tie", unsafe_allow_html=True)
 
 # Tables
 st.divider()
