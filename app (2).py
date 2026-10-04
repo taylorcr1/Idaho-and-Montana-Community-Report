@@ -567,6 +567,57 @@ def build_vis_html(data, geography, network_type, analysis, pon_analysis, plan_a
     font-size: 12px;
     margin-left: 4px;
   }}
+
+  #network-wrap {{
+    position: relative;
+    width: 100%;
+  }}
+  #legend {{
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 255px;
+    max-height: 700px;
+    overflow-y: auto;
+    background: rgba(255,255,255,0.96);
+    border: 1px solid #d9d9d9;
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    z-index: 20;
+    font-size: 12px;
+    line-height: 1.25;
+  }}
+  .legend-title {{
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }}
+  .legend-section {{
+    font-weight: 700;
+    margin-top: 10px;
+    margin-bottom: 5px;
+  }}
+  .legend-row {{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 5px 0;
+  }}
+  .legend-circle, .legend-square, .legend-diamond {{
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    border: 1px solid #333;
+  }}
+  .legend-circle {{ border-radius: 50%; }}
+  .legend-diamond {{ transform: rotate(45deg); margin-left: 2px; margin-right: 2px; }}
+  .legend-line {{
+    width: 28px;
+    height: 0;
+    border-top: 4px solid;
+    flex: 0 0 28px;
+  }}
 </style>
 </head>
 <body>
@@ -577,7 +628,36 @@ def build_vis_html(data, geography, network_type, analysis, pon_analysis, plan_a
   <button onclick="network.stabilize()">Re-layout</button>
   <span id="hint">Scroll to zoom · drag background to pan · drag nodes to reposition · hover for details</span>
 </div>
-<div id="network"></div>
+<div id="network-wrap">
+  <div id="network"></div>
+  <div id="legend">
+    <div class="legend-title">Legend</div>
+
+    <div class="legend-section">PONs</div>
+    <div class="legend-row"><span class="legend-square" style="background:#8A8A8A"></span><span>PON</span></div>
+    <div class="legend-row"><span class="legend-square" style="background:#D4A017"></span><span>Local PON Organization</span></div>
+    <div class="legend-row"><span class="legend-square" style="background:#F6D55C"></span><span>Non-local PON Organization</span></div>
+
+    <div class="legend-section">Plans</div>
+    <div class="legend-row"><span class="legend-diamond" style="background:#8A8A8A"></span><span>Plan</span></div>
+
+    <div class="legend-section">Organizations</div>
+    <div class="legend-row"><span class="legend-circle" style="background:#7B4FA3"></span><span>Local Native American / Affiliated</span></div>
+    <div class="legend-row"><span class="legend-circle" style="background:#B9A0D3"></span><span>Non-local Native American / Affiliated</span></div>
+    <div class="legend-row"><span class="legend-circle" style="background:#3A93C3"></span><span>Other Local Organization (Idaho)</span></div>
+    <div class="legend-row"><span class="legend-circle" style="background:#8EC4DE"></span><span>Other Non-local Organization (Idaho)</span></div>
+    <div class="legend-row"><span class="legend-circle" style="background:#D75F4C"></span><span>Other Local Organization (Montana)</span></div>
+    <div class="legend-row"><span class="legend-circle" style="background:#F6A482"></span><span>Other Non-local Organization (Montana)</span></div>
+    <div class="legend-row"><span class="legend-circle" style="background:#3AA9C3"></span><span>Other Local Organization (Nez Perce)</span></div>
+    <div class="legend-row"><span class="legend-circle" style="background:#8ED9DE"></span><span>Other Non-local Organization (Nez Perce)</span></div>
+    <div class="legend-row"><span class="legend-circle" style="background:#D77B4C"></span><span>Other Local Organization (Flathead)</span></div>
+    <div class="legend-row"><span class="legend-circle" style="background:#F6BC82"></span><span>Other Non-local Organization (Flathead)</span></div>
+
+    <div class="legend-section">Ties</div>
+    <div class="legend-row"><span class="legend-line" style="border-color:#707070"></span><span>Membership tie</span></div>
+    <div class="legend-row"><span class="legend-line" style="border-color:#B7791F"></span><span>PON-to-PON tie</span></div>
+  </div>
+</div>
 
 <script>
 const nodes = new vis.DataSet({nodes_json});
@@ -812,22 +892,73 @@ else:
     )
 
 
-st.markdown("### Network legend")
-legend_cols = st.columns(4)
-with legend_cols[0]:
-    st.markdown("● **Organization** — circle")
-    st.markdown(f"<span style='color:{LOCAL_NATIVE_COLOR};font-size:22px'>●</span> Local Native American / Affiliated", unsafe_allow_html=True)
-    st.markdown(f"<span style='color:{NONLOCAL_NATIVE_COLOR};font-size:22px'>●</span> Non-local Native American / Affiliated", unsafe_allow_html=True)
-with legend_cols[1]:
-    st.markdown(f"<span style='color:{LOCAL_PON_ORG_COLOR};font-size:22px'>■</span> Local PON Organization", unsafe_allow_html=True)
-    st.markdown(f"<span style='color:{NONLOCAL_PON_ORG_COLOR};font-size:22px'>■</span> Non-local PON Organization", unsafe_allow_html=True)
-    st.markdown(f"<span style='color:{REGULAR_PON_COLOR};font-size:22px'>■</span> PON", unsafe_allow_html=True)
-with legend_cols[2]:
-    st.markdown(f"<span style='color:{PLAN_COLOR};font-size:22px'>◆</span> Plan", unsafe_allow_html=True)
-    st.markdown("County/reservation colors distinguish other local vs. non-local organizations.")
-with legend_cols[3]:
-    st.markdown(f"<span style='color:{STANDARD_EDGE_COLOR};font-size:22px'>━</span> Membership tie", unsafe_allow_html=True)
-    st.markdown(f"<span style='color:{PON_TO_PON_EDGE_COLOR};font-size:22px'>━</span> PON-to-PON tie", unsafe_allow_html=True)
+
+# Full six-geography funding table
+st.divider()
+st.subheader("Funding by Organization")
+st.caption(
+    "Funding amounts for work since 2019 are shown separately for all six counties "
+    "and reservations. Amounts are not summed across geographies."
+)
+
+funding_rows = []
+all_oids = sorted(
+    data["org_name"].keys(),
+    key=lambda oid: data["org_name"].get(oid, oid).casefold()
+)
+for oid in all_oids:
+    f = all_six_funding(data, oid)
+    funding_rows.append({
+        "Organization": data["org_name"].get(oid, oid),
+        "OID": oid,
+        "Missoula County": f.get("Missoula County", 0.0),
+        "Lake County": f.get("Lake County", 0.0),
+        "Idaho County": f.get("Idaho County", 0.0),
+        "Nez Perce County": f.get("Nez Perce County", 0.0),
+        "Flathead Reservation": f.get("Flathead Reservation", 0.0),
+        "Nez Perce Reservation": f.get("Nez Perce Reservation", 0.0),
+    })
+
+funding_df = pd.DataFrame(funding_rows)
+
+funding_search = st.text_input(
+    "Search funding table",
+    placeholder="Type an organization name or OID",
+    key="funding_search",
+)
+if funding_search:
+    q = funding_search.strip().casefold()
+    mask = (
+        funding_df["Organization"].astype(str).str.casefold().str.contains(q, regex=False)
+        | funding_df["OID"].astype(str).str.casefold().str.contains(q, regex=False)
+    )
+    funding_display = funding_df.loc[mask].copy()
+else:
+    funding_display = funding_df.copy()
+
+funding_display = funding_display.sort_values("Organization", kind="stable")
+
+st.dataframe(
+    funding_display,
+    use_container_width=True,
+    hide_index=True,
+    column_config={
+        "Missoula County": st.column_config.NumberColumn(format="$%.0f"),
+        "Lake County": st.column_config.NumberColumn(format="$%.0f"),
+        "Idaho County": st.column_config.NumberColumn(format="$%.0f"),
+        "Nez Perce County": st.column_config.NumberColumn(format="$%.0f"),
+        "Flathead Reservation": st.column_config.NumberColumn(format="$%.0f"),
+        "Nez Perce Reservation": st.column_config.NumberColumn(format="$%.0f"),
+    },
+)
+
+st.download_button(
+    "Download funding table as CSV",
+    data=funding_display.to_csv(index=False).encode("utf-8"),
+    file_name="funding_by_organization_all_counties_reservations.csv",
+    mime="text/csv",
+    key="download_funding_table",
+)
 
 # Tables
 st.divider()
