@@ -357,6 +357,17 @@ def build_analysis(data, geography, network_type):
     }
 
 
+
+@st.cache_resource(show_spinner="Preparing all county and reservation network analyses...")
+def precompute_all_analyses(_data):
+    """Build the 6 geographies × PON/Plan analyses once and reuse them."""
+    results = {}
+    for geo in GEOGRAPHIES:
+        results[(geo, "PON")] = build_analysis(_data, geo, "PON")
+        results[(geo, "Plan")] = build_analysis(_data, geo, "Plan")
+    return results
+
+
 def org_category(data, geography, oid):
     local = data["locality"][geography].get(oid, 0) == 1
     native = data["native"].get(oid, 0) == 1
@@ -683,12 +694,12 @@ const options = {{
       springLength: 145,
       springConstant: 0.06,
       damping: 0.55,
-      avoidOverlap: 0.65
+      avoidOverlap: 0.35
     }},
     stabilization: {{
       enabled: true,
-      iterations: 700,
-      updateInterval: 50,
+      iterations: 180,
+      updateInterval: 30,
       fit: true
     }}
   }},
@@ -814,8 +825,10 @@ with controls:
     node_scale = st.slider("Node size", 0.6, 2.0, 1.0, 0.1)
     edge_scale = st.slider("Tie thickness", 0.5, 2.0, 1.0, 0.1)
 
-pon = build_analysis(data, geography, "PON")
-plan = build_analysis(data, geography, "Plan")
+with st.spinner("Preparing network data..."):
+    all_analyses = precompute_all_analyses(data)
+pon = all_analyses[(geography, "PON")]
+plan = all_analyses[(geography, "Plan")]
 current = pon if network_type == "PON" else plan
 
 graph_html = build_vis_html(
@@ -901,25 +914,28 @@ st.caption(
     "and reservations. Amounts are not summed across geographies."
 )
 
-funding_rows = []
-all_oids = sorted(
-    data["org_name"].keys(),
-    key=lambda oid: data["org_name"].get(oid, oid).casefold()
-)
-for oid in all_oids:
-    f = all_six_funding(data, oid)
-    funding_rows.append({
-        "Organization": data["org_name"].get(oid, oid),
-        "OID": oid,
-        "Missoula County": f.get("Missoula County", 0.0),
-        "Lake County": f.get("Lake County", 0.0),
-        "Idaho County": f.get("Idaho County", 0.0),
-        "Nez Perce County": f.get("Nez Perce County", 0.0),
-        "Flathead Reservation": f.get("Flathead Reservation", 0.0),
-        "Nez Perce Reservation": f.get("Nez Perce Reservation", 0.0),
-    })
+@st.cache_resource(show_spinner=False)
+def build_funding_dataframe(_data):
+    rows = []
+    all_oids = sorted(
+        _data["org_name"].keys(),
+        key=lambda oid: _data["org_name"].get(oid, oid).casefold()
+    )
+    for oid in all_oids:
+        f = all_six_funding(_data, oid)
+        rows.append({
+            "Organization": _data["org_name"].get(oid, oid),
+            "OID": oid,
+            "Missoula County": f.get("Missoula County", 0.0),
+            "Lake County": f.get("Lake County", 0.0),
+            "Idaho County": f.get("Idaho County", 0.0),
+            "Nez Perce County": f.get("Nez Perce County", 0.0),
+            "Flathead Reservation": f.get("Flathead Reservation", 0.0),
+            "Nez Perce Reservation": f.get("Nez Perce Reservation", 0.0),
+        })
+    return pd.DataFrame(rows)
 
-funding_df = pd.DataFrame(funding_rows)
+funding_df = build_funding_dataframe(data)
 
 funding_search = st.text_input(
     "Search funding table",
